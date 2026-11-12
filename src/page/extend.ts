@@ -50,7 +50,7 @@ import { DEFAULTS } from "../shared/config.ts";
 import { shot, type ShotOptions, type ShotResult } from "./shot.ts";
 import { fill } from "./fill.ts";
 import { waitForLoad, installLoadTracker, type WaitForLoadOptions, type WaitForLoadResult } from "./wait-for-load.ts";
-import { pageLine, abortedByRun, resolveRunPath } from "../daemon/run-context.ts";
+import { pageLine, pageHasRun, abortedByRun, resolveRunPath } from "../daemon/run-context.ts";
 import {
   snapshot,
   resolveRef,
@@ -222,7 +222,25 @@ async function reallyBringToFront(page: Page): Promise<void> {
 
 const FOCUS_EMULATED = new WeakSet<Page>();
 
-/** Focus emulation, once per page: it lasts for as long as this connection to the browser. */
+/** True while a running script uses a page up this page's opener chain (popups opened during a run). */
+async function openerHasRun(page: Page): Promise<boolean> {
+  let target = page.target().opener();
+  for (let depth = 0; target && depth < 5; depth++) {
+    const opener = await target.page().catch(() => null);
+    if (opener && pageHasRun(opener)) return true;
+    target = target.opener();
+  }
+  return false;
+}
+
+/** Undo focus emulation once no run uses this page, so the user's own tab stops reporting focus. */
+export async function releaseFocusEmulation(page: Page): Promise<void> {
+  if (!FOCUS_EMULATED.has(page)) return;
+  FOCUS_EMULATED.delete(page);
+  await page.emulateFocusedPage(false).catch(() => {});
+}
+
+/** Focus emulation, once per page; in someone's own browser it is released when no run uses the page (releaseFocusEmulation). */
 async function emulateFocus(page: Page): Promise<void> {
   if (FOCUS_EMULATED.has(page)) return;
   FOCUS_EMULATED.add(page);
@@ -726,13 +744,15 @@ export function extendPage(page: Page): DevBrowserPage {
   // beforeunload is accepted: the script asked to navigate; dismiss would cancel it.
   page.on("dialog", (dialog: Dialog) => {
     if (page.listenerCount("dialog") > 1) return;
-    const accept = dialog.type() === "beforeunload";
-    void (accept ? dialog.accept() : dialog.dismiss())
-      .catch(() => {})
-      .then(() => {
-        const msg = dialog.message();
-        pageLine(page, `dialog ${dialog.type()}: ${msg.length > 200 ? msg.slice(0, 200) + "…" : msg} (auto-${accept ? "accepted" : "dismissed"})`);
-      });
+    void (async () => {
+      // In someone's own browser (--connect), a dialog belongs to the user unless a running script uses this page
+      // or the page that opened it (a popup opened during the run).
+      if (isBehind(page) && !pageHasRun(page) && !(await openerHasRun(page))) return;
+      const accept = dialog.type() === "beforeunload";
+      await (accept ? dialog.accept() : dialog.dismiss()).catch(() => {});
+      const msg = dialog.message();
+      pageLine(page, `dialog ${dialog.type()}: ${msg.length > 200 ? msg.slice(0, 200) + "…" : msg} (auto-${accept ? "accepted" : "dismissed"})`);
+    })();
   });
 
   return page as DevBrowserPage;

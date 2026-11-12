@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In attached browsers (`--connect`), a user tab that a script touched no longer auto-dismisses the user's own dialogs (or auto-accepts `beforeunload`) and no longer reports focus after the script ends: dialog handling and focus emulation last only while a run uses the tab, or a page that opened it.
+
 ## [1.0.0] - 2026-11-03
 
 - First stable 1.0 release: 1.0.0-rc.4 plus one fix. See the release candidates below for everything new since 0.2.9.

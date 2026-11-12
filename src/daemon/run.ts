@@ -36,7 +36,8 @@ import { formatScriptError } from "./errors.ts";
 import { ChromeNotFoundError } from "../shared/chrome.ts";
 import { CdpConnectError } from "./sources/cdp.ts";
 import type { ShotResult } from "../page/shot.ts";
-import { withRun, addPageLineHook } from "./run-context.ts";
+import { withRun, addPageLineHook, acquirePageRun, pageHasRun } from "./run-context.ts";
+import { releaseFocusEmulation } from "../page/extend.ts";
 
 export interface RunContext {
   manager: BrowserManager;
@@ -525,6 +526,13 @@ export async function runScript(req: RunRequest, ctx: RunContext): Promise<RunOu
     } catch {
       /* closed page */
     }
+    // Track which runs use this page before, and regardless of, page-console output: in someone's own browser,
+    // dialog handling and focus emulation last only while a run uses the page.
+    const releaseRun = acquirePageRun(page);
+    listeners.push(() => {
+      releaseRun();
+      if (!pageHasRun(page)) void releaseFocusEmulation(page as never);
+    });
     if (req.quietPage) return;
     const label = () => `[page${name ? ":" + name : ""}]`;
     const onConsole = (msg: ConsoleMessage) => {

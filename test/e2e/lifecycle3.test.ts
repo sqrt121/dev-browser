@@ -146,8 +146,23 @@ r`,
     const r = await cli.run(["--connect", String(port), "-e", `const p = await browser.getPage(${JSON.stringify(id)}); [typeof p.snapshot, await p.evaluate(() => confirm("now?"))]`]);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual(["function", false]);
-    // and it stays extended (dev-browser touched it): the user's confirm is now auto-dismissed
-    expect(await confirmFromUser(userPage)).toBe(false);
+    // Once that run has ended, the tab's dialogs belong to the user again: their confirm is not auto-dismissed.
+    expect(await confirmFromUser(userPage)).toBe(true);
+    await userPage.close();
+  }, 30_000);
+
+  test("focus emulation on a user tab lasts only while a run uses it", async () => {
+    const userPage = await ext!.newPage();
+    await userPage.goto(srv.url("/"));
+    const other = await ext!.newPage(); // the user's front tab; userPage is now in the background
+    await other.goto(srv.url("/"));
+    const id = targetIdOf(userPage);
+    expect(await userPage.evaluate(() => document.hasFocus())).toBe(false);
+    const r = await cli.run(["--connect", String(port), "-e", `const p = await browser.getPage(${JSON.stringify(id)}); await p.shot(); await p.evaluate(() => document.hasFocus())`]);
+    expect(r.code).toBe(0);
+    expect(r.stdout.trim().split("\n").pop()).toBe("true");
+    expect(await userPage.evaluate(() => document.hasFocus())).toBe(false);
+    await other.close();
     await userPage.close();
   }, 30_000);
 

@@ -219,7 +219,7 @@ FLAGS
   -> raw browser-level CDP, one JSON message per line (embedder hook).
   Attached browsers are never closed by --idle-timeout; `dev-browser stop <key>` only disconnects. Named pages work the same
   (stored per endpoint; ws URL query/credentials stripped from keys/logs); the user's tabs: browser.listPages(), getPage(targetId).
-  Only touched tabs are extended (`help pages`). Never raised: new pages open in a window of their own behind the user's, touched tabs get focus emulation, and only a background-tab shot stalled 2 s brings it forward (page.bringToFront() still does).
+  Only touched tabs are extended (`help pages`). Never raised: new pages open in a window of their own behind the user's, touched tabs get focus emulation while a script uses them, and only a background-tab shot stalled 2 s brings it forward (page.bringToFront() still does). Once no script uses a tab of the user's, its dialogs belong to the user again and its focus emulation is released.
 
 ## chrome
   dev-browser chrome [--profile NAME] [--port N] [--chrome PATH] [--headless] [URL]   launch your real installed Chrome as

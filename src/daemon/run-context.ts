@@ -75,6 +75,27 @@ export function addPageLineHook(page: object, hook: PageLineHook): () => void {
   };
 }
 
+/** Runs currently using each page, tracked independently of page-console output (--quiet-page). */
+const pageRuns = new WeakMap<object, number>();
+
+/** Mark `page` as used by a running script; returns an idempotent release function. */
+export function acquirePageRun(page: object): () => void {
+  pageRuns.set(page, (pageRuns.get(page) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const n = (pageRuns.get(page) ?? 1) - 1;
+    if (n > 0) pageRuns.set(page, n);
+    else pageRuns.delete(page);
+  };
+}
+
+/** True while at least one running script has touched `page`. */
+export function pageHasRun(page: object): boolean {
+  return (pageRuns.get(page) ?? 0) > 0;
+}
+
 /** Deliver a page-console style line (without the `[page:NAME]` label) to every run that touched `page`. */
 export function pageLine(page: object, text: string): void {
   const set = pageHooks.get(page);
